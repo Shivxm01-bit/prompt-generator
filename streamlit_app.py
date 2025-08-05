@@ -1,6 +1,37 @@
 import streamlit as st
+import pandas as pd
 import random
+import os
 
+# ------------------ Configuration ------------------ #
+st.set_page_config(page_title="AI Prompt Generator", page_icon="🤖", layout="centered")
+
+# ------------------ Load/Create Users CSV ------------------ #
+USER_CSV = "users.csv"
+if not os.path.exists(USER_CSV):
+    pd.DataFrame(columns=["username", "password", "country", "language"]).to_csv(USER_CSV, index=False)
+
+# ------------------ User Authentication ------------------ #
+def load_users():
+    return pd.read_csv(USER_CSV)
+
+def save_user(username, password, country, language):
+    df = load_users()
+    if username in df["username"].values:
+        return False
+    df = pd.concat([df, pd.DataFrame([{
+        "username": username, "password": password,
+        "country": country, "language": language
+    }])], ignore_index=True)
+    df.to_csv(USER_CSV, index=False)
+    return True
+
+def check_credentials(username, password):
+    df = load_users()
+    match = df[(df["username"] == username) & (df["password"] == password)]
+    return not match.empty
+
+# ------------------ Prompt Logic ------------------ #
 prompt_templates = {
     "Customer Support": [
         "You are a helpful customer support agent. Respond kindly to the user's question: \"{user_input}\"",
@@ -36,8 +67,48 @@ def similarity_scores(base_prompt, suggestions):
         set_a = set(a.lower().split())
         set_b = set(b.lower().split())
         return round(len(set_a & set_b) / len(set_a | set_b), 2) if set_a | set_b else 0.0
-
     return [simple_similarity(base_prompt, s) for s in suggestions]
+
+# ------------------ Theme: Dark Mode ------------------ #
+dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=False)
+if dark_mode:
+    st.markdown("<style>body{background-color: #0e1117; color: white;}</style>", unsafe_allow_html=True)
+
+# ------------------ Login/Signup Logic ------------------ #
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    mode = st.sidebar.radio("Select Mode", ["Login", "Signup"])
+    st.title("🔐 AI Prompt Generator - Auth")
+
+    if mode == "Login":
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if check_credentials(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success("Login successful!")
+            else:
+                st.error("Invalid credentials.")
+    else:
+        new_user = st.text_input("Choose a Username")
+        new_pass = st.text_input("Choose a Password", type="password")
+        country = st.selectbox("Country", ["India", "USA", "Germany", "France", "Other"])
+        language = st.selectbox("Language", ["English", "Hindi", "German", "French", "Other"])
+        if st.button("Create Account"):
+            if save_user(new_user, new_pass, country, language):
+                st.success("Account created! Please login now.")
+            else:
+                st.warning("Username already exists. Try another.")
+    st.stop()
+
+# ------------------ Logged-In Interface ------------------ #
+st.sidebar.success(f"Welcome, {st.session_state.username}!")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
 
 st.title("🤖 AI Prompt Generator for Chatbots")
 
